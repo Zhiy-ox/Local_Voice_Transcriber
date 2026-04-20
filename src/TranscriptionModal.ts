@@ -1,11 +1,14 @@
-import { App, Modal, Setting, Notice } from 'obsidian';
+import { App, Modal, Notice, Setting, TFile } from 'obsidian';
+import { asError, path, requireDialogModule } from './desktop';
 import type { WhisperService } from './WhisperService';
 import type { LLMService } from './LLMService';
 import type { ServerManager } from './ServerManager';
 import type { NoteWriter } from './NoteWriter';
 import type { NoteType, PipelineStatus } from './types';
 
-const path = (window as any).require('path') as typeof import('path');
+interface FileWithPath extends File {
+  path?: string;
+}
 
 export class TranscriptionModal extends Modal {
   private selectedFilePath: string | null = null;
@@ -34,7 +37,7 @@ export class TranscriptionModal extends Modal {
   onOpen(): void {
     const { contentEl } = this;
     contentEl.addClass('mt-modal');
-    contentEl.createEl('h2', { text: 'Transcribe Meeting Recording' });
+    contentEl.createEl('h2', { text: 'Transcribe meeting recording' });
 
     this.renderFileZone(contentEl);
     this.renderOptions(contentEl);
@@ -49,41 +52,44 @@ export class TranscriptionModal extends Modal {
     this.contentEl.empty();
   }
 
-  // ── File selection zone ───────────────────────────────────────────────────
-
   private renderFileZone(parent: HTMLElement): void {
     this.fileZoneEl = parent.createDiv('mt-drop-zone');
     this.fileZoneEl.setText('Drop audio file here, or click to browse');
-
-    this.fileZoneEl.addEventListener('click', async () => {
-      const filePath = await this.openFilePicker();
-      if (filePath) this.selectFile(filePath);
+    this.fileZoneEl.addEventListener('click', () => {
+      void this.handleBrowseClick();
     });
 
-    this.fileZoneEl.addEventListener('dragover', (e) => {
-      e.preventDefault();
+    this.fileZoneEl.addEventListener('dragover', (event) => {
+      event.preventDefault();
       this.fileZoneEl.addClass('mt-drop-zone--active');
     });
+
     this.fileZoneEl.addEventListener('dragleave', () => {
       this.fileZoneEl.removeClass('mt-drop-zone--active');
     });
-    this.fileZoneEl.addEventListener('drop', (e) => {
-      e.preventDefault();
+
+    this.fileZoneEl.addEventListener('drop', (event) => {
+      event.preventDefault();
       this.fileZoneEl.removeClass('mt-drop-zone--active');
-      const file = e.dataTransfer?.files[0];
-      if (file) {
-        const nativePath: string = (file as any).path ?? '';
-        if (nativePath) this.selectFile(nativePath);
+      const file = event.dataTransfer?.files[0] as FileWithPath | undefined;
+      if (file?.path) {
+        this.selectFile(file.path);
       }
     });
 
-    this.fileNameEl = parent.createDiv('mt-filename');
-    this.fileNameEl.style.display = 'none';
+    this.fileNameEl = parent.createDiv('mt-filename mt-hidden');
+  }
+
+  private async handleBrowseClick(): Promise<void> {
+    const filePath = await this.openFilePicker();
+    if (filePath) {
+      this.selectFile(filePath);
+    }
   }
 
   private selectFile(filePath: string): void {
     this.selectedFilePath = filePath;
-    this.fileNameEl.style.display = '';
+    this.fileNameEl.removeClass('mt-hidden');
     this.fileNameEl.setText(`Selected: ${path.basename(filePath)}`);
     this.fileZoneEl.addClass('mt-drop-zone--selected');
     this.updateStartButton();
@@ -91,22 +97,23 @@ export class TranscriptionModal extends Modal {
 
   private async openFilePicker(): Promise<string | null> {
     const filters = [
-      { name: 'Audio Files', extensions: ['m4a', 'mp3', 'wav', 'ogg', 'flac', 'mp4', 'webm', 'aac'] },
-      { name: 'All Files', extensions: ['*'] },
+      { name: 'Audio files', extensions: ['m4a', 'mp3', 'wav', 'ogg', 'flac', 'mp4', 'webm', 'aac'] },
+      { name: 'All files', extensions: ['*'] },
     ];
+
     try {
-      const electron = (window as any).require('electron');
-      const remote = electron.remote ?? (window as any).require('@electron/remote');
-      const result = await remote.dialog.showOpenDialog({
+      const result = await requireDialogModule().dialog.showOpenDialog({
         properties: ['openFile'],
         filters,
       });
+
       if (!result.canceled && result.filePaths.length > 0) {
         return result.filePaths[0];
       }
     } catch {
-      return await this.htmlFilePicker();
+      return this.htmlFilePicker();
     }
+
     return null;
   }
 
@@ -116,73 +123,72 @@ export class TranscriptionModal extends Modal {
       input.type = 'file';
       input.accept = '.m4a,.mp3,.wav,.ogg,.flac,.mp4,.webm,.aac';
       input.onchange = () => {
-        const file = input.files?.[0];
-        resolve(file ? ((file as any).path ?? null) : null);
+        const file = input.files?.[0] as FileWithPath | undefined;
+        resolve(file?.path ?? null);
         input.remove();
       };
       input.click();
     });
   }
 
-  // ── Options form ──────────────────────────────────────────────────────────
-
   private renderOptions(parent: HTMLElement): void {
     this.optionsEl = parent.createDiv('mt-options');
 
     new Setting(this.optionsEl)
       .setName('Context / participants')
-      .setDesc('Names, roles, or topics — helps the LLM identify speakers and tag correctly.')
-      .addText(text =>
+      .setDesc('Names, roles, or topics. Helps the LLM identify speakers and tag correctly.')
+      .addText((text) =>
         text
           .setPlaceholder('e.g. Alice, Bob (client), Carol — Q2 planning')
-          .onChange(v => { this.contextText = v; })
+          .onChange((value) => {
+            this.contextText = value;
+          }),
       );
 
     new Setting(this.optionsEl)
       .setName('Meeting type')
-      .addDropdown(dd =>
-        dd
+      .addDropdown((dropdown) =>
+        dropdown
           .addOptions({
-            general: 'General Meeting',
-            'research-meeting': 'Research Meeting',
+            general: 'General meeting',
+            'research-meeting': 'Research meeting',
             supervision: 'Supervision / 1-on-1',
-            'conference-call': 'Conference Call',
+            'conference-call': 'Conference call',
           })
           .setValue(this.noteType)
-          .onChange(v => { this.noteType = v as NoteType; })
+          .onChange((value) => {
+            this.noteType = value as NoteType;
+          }),
       );
   }
 
-  // ── Progress display ──────────────────────────────────────────────────────
-
   private renderProgress(parent: HTMLElement): void {
-    this.progressEl = parent.createDiv('mt-progress');
-    this.progressEl.style.display = 'none';
+    this.progressEl = parent.createDiv('mt-progress mt-hidden');
   }
 
   private setStatus(status: PipelineStatus): void {
     this.progressEl.empty();
 
     if (status.stage === 'idle') {
-      this.progressEl.style.display = 'none';
+      this.progressEl.addClass('mt-hidden');
       return;
     }
 
-    this.progressEl.style.display = '';
+    this.progressEl.removeClass('mt-hidden');
 
     if (status.stage === 'done') {
       const noteName = status.notePath.split('/').pop() ?? status.notePath;
       this.progressEl.createEl('p', {
         cls: 'mt-status mt-status--done',
-        text: `✓ Note saved: ${noteName}`,
+        text: `Note saved: ${noteName}`,
       });
+
       const link = this.progressEl.createEl('a', { text: 'Open note', cls: 'mt-link' });
       link.addEventListener('click', () => {
-        const file = this.app.vault.getAbstractFileByPath(status.notePath);
-        if (file) this.app.workspace.getLeaf().openFile(file as any);
-        this.close();
+        void this.openSavedNote(status.notePath);
       });
-      this.cancelBtn.style.display = 'none';
+
+      this.cancelBtn.addClass('mt-hidden');
       this.startBtn.disabled = false;
       this.startBtn.textContent = 'Transcribe another';
       return;
@@ -191,56 +197,74 @@ export class TranscriptionModal extends Modal {
     if (status.stage === 'error') {
       this.progressEl.createEl('p', {
         cls: 'mt-status mt-status--error',
-        text: `✗ ${status.message}`,
+        text: status.message,
       });
-      this.cancelBtn.style.display = 'none';
+      this.cancelBtn.addClass('mt-hidden');
       this.startBtn.disabled = false;
       this.startBtn.textContent = 'Retry';
       return;
     }
 
-    let msg: string;
+    let message = '';
     switch (status.stage) {
-      case 'starting-servers': msg = 'Starting servers…'; break;
-      case 'transcribing':     msg = `Transcribing audio (${status.elapsed}s)…`; break;
-      case 'summarising':      msg = 'Generating meeting notes…'; break;
-      case 'saving':           msg = 'Saving note to vault…'; break;
-      default:                 msg = status.stage;
+      case 'starting-servers':
+        message = 'Starting servers…';
+        break;
+      case 'transcribing':
+        message = `Transcribing audio (${status.elapsed}s)…`;
+        break;
+      case 'summarising':
+        message = 'Generating meeting notes…';
+        break;
+      case 'saving':
+        message = 'Saving note to vault…';
+        break;
     }
-    this.progressEl.createEl('p', { cls: 'mt-status', text: msg });
 
-    const stages: Array<PipelineStatus['stage']> = [
-      'starting-servers', 'transcribing', 'summarising', 'saving',
-    ];
+    this.progressEl.createEl('p', { cls: 'mt-status', text: message });
+
+    const stages: PipelineStatus['stage'][] = ['starting-servers', 'transcribing', 'summarising', 'saving'];
     const stageLabels: Record<string, string> = {
       'starting-servers': 'Servers',
       transcribing: 'Transcribing',
       summarising: 'Summarising',
       saving: 'Saving',
     };
+
     const dotsEl = this.progressEl.createDiv('mt-stages');
-    stages.forEach(s => {
+    stages.forEach((stage) => {
       const dot = dotsEl.createSpan({ cls: 'mt-stage-dot' });
-      dot.setText(stageLabels[s] ?? s);
-      if (s === status.stage) dot.addClass('mt-stage-dot--active');
-      else if (stages.indexOf(s) < stages.indexOf(status.stage)) dot.addClass('mt-stage-dot--done');
+      dot.setText(stageLabels[stage] ?? stage);
+
+      if (stage === status.stage) {
+        dot.addClass('mt-stage-dot--active');
+      } else if (stages.indexOf(stage) < stages.indexOf(status.stage)) {
+        dot.addClass('mt-stage-dot--done');
+      }
     });
   }
 
-  // ── Actions row ───────────────────────────────────────────────────────────
+  private async openSavedNote(notePath: string): Promise<void> {
+    const file: TFile | null = this.app.vault.getFileByPath(notePath);
+    if (!file) {
+      return;
+    }
+
+    await this.app.workspace.getLeaf().openFile(file);
+    this.close();
+  }
 
   private renderActions(parent: HTMLElement): void {
     const row = parent.createDiv('mt-actions');
 
-    this.cancelBtn = row.createEl('button', { text: 'Cancel', cls: 'mt-btn' });
-    this.cancelBtn.style.display = 'none';
+    this.cancelBtn = row.createEl('button', { text: 'Cancel', cls: 'mt-btn mt-hidden' });
     this.cancelBtn.addEventListener('click', () => {
       this.abortController?.abort();
-      this.cancelBtn.style.display = 'none';
+      this.cancelBtn.addClass('mt-hidden');
       this.startBtn.disabled = false;
       this.startBtn.textContent = 'Start pipeline';
       this.setStatus({ stage: 'idle' });
-      new Notice('Local Meeting Transcriber: cancelled.');
+      new Notice('Local Meeting Transcriber: canceled.');
     });
 
     this.startBtn = row.createEl('button', {
@@ -248,60 +272,59 @@ export class TranscriptionModal extends Modal {
       cls: 'mt-btn mt-btn--primary',
     });
     this.startBtn.disabled = true;
-    this.startBtn.addEventListener('click', () => this.runPipeline());
+    this.startBtn.addEventListener('click', () => {
+      void this.runPipeline();
+    });
   }
 
   private updateStartButton(): void {
     this.startBtn.disabled = !this.selectedFilePath;
   }
 
-  // ── Pipeline ──────────────────────────────────────────────────────────────
-
   private async runPipeline(): Promise<void> {
-    if (!this.selectedFilePath) return;
+    if (!this.selectedFilePath) {
+      return;
+    }
 
     this.abortController = new AbortController();
     const { signal } = this.abortController;
 
     this.startBtn.disabled = true;
     this.startBtn.textContent = 'Running…';
-    this.cancelBtn.style.display = '';
+    this.cancelBtn.removeClass('mt-hidden');
 
     const audioFilename = path.basename(this.selectedFilePath);
 
     try {
-      // Step 0: Ensure servers are reachable (startIfNeeded is idempotent)
       this.setStatus({ stage: 'starting-servers' });
       const [whisperOk, llmOk] = await Promise.all([
         this.whisperManager.startIfNeeded(),
         this.llmManager.startIfNeeded(),
       ]);
+
       if (!whisperOk) {
-        throw new Error(
-          'Whisper server could not be started. ' +
-          'Check Settings > Local Meeting Transcriber.',
-        );
+        throw new Error('Whisper server could not be started. Check the plugin settings.');
       }
       if (!llmOk) {
-        throw new Error(
-          'LLM server could not be started. ' +
-          'Check Settings > Local Meeting Transcriber.',
-        );
+        throw new Error('LLM server could not be started. Check the plugin settings.');
+      }
+      if (signal.aborted) {
+        return;
       }
 
-      if (signal.aborted) return;
-
-      // Step 1: Transcribe
       this.setStatus({ stage: 'transcribing', elapsed: 0 });
       const transcript = await this.whisperService.transcribe(
         this.selectedFilePath,
         signal,
-        (elapsed) => this.setStatus({ stage: 'transcribing', elapsed }),
+        (elapsed) => {
+          this.setStatus({ stage: 'transcribing', elapsed });
+        },
       );
 
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        return;
+      }
 
-      // Step 2: Generate notes
       this.setStatus({ stage: 'summarising' });
       const note = await this.llmService.generateMeetingNotes(
         transcript,
@@ -310,19 +333,20 @@ export class TranscriptionModal extends Modal {
         signal,
       );
 
-      if (signal.aborted) return;
+      if (signal.aborted) {
+        return;
+      }
 
-      // Step 3: Save
       this.setStatus({ stage: 'saving' });
       const notePath = await this.noteWriter.save(note, transcript, this.noteType, audioFilename);
-
       this.setStatus({ stage: 'done', notePath });
+    } catch (error: unknown) {
+      if (signal.aborted || (error instanceof Error && error.name === 'AbortError')) {
+        return;
+      }
 
-    } catch (err: unknown) {
-      if (signal.aborted || (err instanceof Error && err.name === 'AbortError')) return;
-      const message = err instanceof Error ? err.message : String(err);
-      this.setStatus({ stage: 'error', message });
-      console.error('[Local Meeting Transcriber]', err);
+      this.setStatus({ stage: 'error', message: asError(error).message });
+      console.error('[Local Meeting Transcriber]', error);
     }
   }
 }

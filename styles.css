@@ -5,6 +5,10 @@
   max-width: 640px;
 }
 
+.mt-hidden {
+  display: none;
+}
+
 /* ── Drop zone ─────────────────────────────────────────────────────────────── */
 
 .mt-drop-zone {
@@ -40,6 +44,12 @@
 
 .mt-options {
   margin-bottom: 12px;
+}
+
+.mt-system-prompt-input {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: 0.82em;
 }
 
 /* ── Progress ──────────────────────────────────────────────────────────────── */
@@ -123,4 +133,21 @@
 .mt-btn--primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+.mt-status-bar {
+  cursor: pointer;
+}
+
+.mt-status-bar--checking,
+.mt-status-bar--starting {
+  color: var(--text-muted);
+}
+
+.mt-status-bar--ready {
+  color: var(--color-green);
+}
+
+.mt-status-bar--offline {
+  color: var(--color-orange);
 }

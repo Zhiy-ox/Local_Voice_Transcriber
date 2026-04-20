@@ -1,10 +1,11 @@
-import { Plugin, Notice, addIcon } from 'obsidian';
-import { LocalMeetingTranscriberSettingTab } from './settings';
-import { WhisperService } from './WhisperService';
+import { Notice, Plugin, addIcon } from 'obsidian';
+import { asError } from './desktop';
 import { LLMService } from './LLMService';
-import { ServerManager } from './ServerManager';
 import { NoteWriter } from './NoteWriter';
+import { ServerManager } from './ServerManager';
+import { LocalMeetingTranscriberSettingTab } from './settings';
 import { TranscriptionModal } from './TranscriptionModal';
+import { WhisperService } from './WhisperService';
 import { DEFAULT_SETTINGS } from './types';
 import type { MeetingTranscriberSettings } from './types';
 
@@ -15,6 +16,8 @@ const MIC_ICON = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fi
   <line x1="12" y1="19" x2="12" y2="22"/>
   <line x1="8" y1="22" x2="16" y2="22"/>
 </svg>`;
+
+type StatusBarState = 'checking' | 'starting' | 'ready' | 'offline';
 
 export default class LocalMeetingTranscriberPlugin extends Plugin {
   settings!: MeetingTranscriberSettings;
@@ -34,57 +37,70 @@ export default class LocalMeetingTranscriberPlugin extends Plugin {
     this.llmService = new LLMService(this.settings);
     this.noteWriter = new NoteWriter(this.app, this.settings);
 
-    // ServerManagers own the server lifecycle; each delegates ping to the respective service
     this.whisperManager = new ServerManager(
       'Whisper',
       () => this.settings.whisperStartCommand,
       () => this.whisperService.ping(),
-      30_000,          // whisper-server starts fast
+      30_000,
     );
     this.llmManager = new ServerManager(
       'LLM',
       () => this.settings.llmStartCommand,
       () => this.llmService.ping(),
-      5 * 60_000,      // LLM may take minutes to load
+      5 * 60_000,
     );
 
     addIcon('lmt-mic', MIC_ICON);
-    this.addRibbonIcon('lmt-mic', 'Transcribe meeting recording', () => this.openModal());
+    this.addRibbonIcon('lmt-mic', 'Transcribe meeting recording', () => {
+      this.openModal();
+    });
 
     this.statusBarItem = this.addStatusBarItem();
-    this.statusBarItem.setText('MT: checking…');
-    this.statusBarItem.title = 'Local Meeting Transcriber — click to check server status';
-    this.statusBarItem.style.cursor = 'pointer';
-    this.statusBarItem.addEventListener('click', () => this.checkAndReportStatus());
+    this.statusBarItem.addClass('mt-status-bar');
+    this.statusBarItem.title = 'Click to check server status';
+    this.statusBarItem.addEventListener('click', () => {
+      void this.checkAndReportStatus();
+    });
+    this.setStatusBarState('checking', 'Meeting transcriber: checking…');
 
     this.addCommand({
       id: 'transcribe-meeting',
       name: 'Transcribe meeting audio',
-      callback: () => this.openModal(),
+      callback: () => {
+        this.openModal();
+      },
     });
 
     this.addCommand({
       id: 'start-whisper-server',
-      name: 'Start Whisper server',
-      callback: () => this.whisperManager.startIfNeeded(),
+      name: 'Start whisper server',
+      callback: () => {
+        void this.whisperManager.startIfNeeded();
+      },
     });
 
     this.addCommand({
       id: 'start-llm-server',
       name: 'Start LLM server',
-      callback: () => this.llmManager.startIfNeeded(),
+      callback: () => {
+        void this.llmManager.startIfNeeded();
+      },
     });
 
     this.addCommand({
       id: 'start-all-servers',
       name: 'Start all servers',
-      callback: () => this.startAllServers(),
+      callback: () => {
+        void this.startAllServers();
+      },
     });
 
     this.addCommand({
       id: 'check-server-status',
       name: 'Check server status',
-      callback: () => this.checkAndReportStatus(),
+      callback: () => {
+        void this.checkAndReportStatus();
+      },
     });
 
     this.addSettingTab(new LocalMeetingTranscriberSettingTab(this.app, this));
@@ -93,8 +109,9 @@ export default class LocalMeetingTranscriberPlugin extends Plugin {
       void this.startAllServers();
     });
 
-    // Re-check status bar every 30 s
-    this.registerInterval(window.setInterval(() => this.updateStatusBar(), 30_000));
+    this.registerInterval(window.setInterval(() => {
+      void this.updateStatusBar();
+    }, 30_000));
   }
 
   onunload(): void {
@@ -113,29 +130,24 @@ export default class LocalMeetingTranscriberPlugin extends Plugin {
     this.noteWriter?.updateSettings(this.settings);
   }
 
-  // ── Server management ──────────────────────────────────────────────────────
-
   async startAllServers(): Promise<void> {
-    this.statusBarItem.setText('MT: starting…');
-    this.statusBarItem.style.color = 'var(--text-muted)';
+    this.setStatusBarState('starting', 'Meeting transcriber: starting…');
 
     await Promise.all([
       this.settings.whisperAutoStart
-        ? this.whisperManager.startIfNeeded().catch(e =>
-            new Notice(`Local Meeting Transcriber: Whisper failed — ${(e as Error).message}`)
+        ? this.whisperManager.startIfNeeded().catch((error) =>
+            new Notice(`Local Meeting Transcriber: Whisper failed — ${asError(error).message}`),
           )
         : Promise.resolve(),
       this.settings.llmAutoStart
-        ? this.llmManager.startIfNeeded().catch(e =>
-            new Notice(`Local Meeting Transcriber: LLM failed — ${(e as Error).message}`)
+        ? this.llmManager.startIfNeeded().catch((error) =>
+            new Notice(`Local Meeting Transcriber: LLM failed — ${asError(error).message}`),
           )
         : Promise.resolve(),
     ]);
 
     await this.updateStatusBar();
   }
-
-  // ── Status bar ─────────────────────────────────────────────────────────────
 
   async updateStatusBar(): Promise<void> {
     const [whisperOk, llmOk] = await Promise.all([
@@ -144,17 +156,26 @@ export default class LocalMeetingTranscriberPlugin extends Plugin {
     ]);
 
     if (whisperOk && llmOk) {
-      this.statusBarItem.setText('MT: ready ✓');
-      this.statusBarItem.style.color = 'var(--color-green)';
-    } else {
-      const offline = [!whisperOk && 'Whisper', !llmOk && 'LLM']
-        .filter(Boolean).join(', ');
-      this.statusBarItem.setText(`MT: ${offline} offline`);
-      this.statusBarItem.style.color = 'var(--color-orange)';
+      this.setStatusBarState('ready', 'Meeting transcriber: ready');
+      return;
     }
+
+    const offline = [!whisperOk ? 'Whisper' : null, !llmOk ? 'LLM' : null]
+      .filter((value): value is string => value !== null)
+      .join(', ');
+    this.setStatusBarState('offline', `Meeting transcriber: ${offline} offline`);
   }
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  private setStatusBarState(state: StatusBarState, text: string): void {
+    this.statusBarItem.setText(text);
+    this.statusBarItem.removeClass(
+      'mt-status-bar--checking',
+      'mt-status-bar--starting',
+      'mt-status-bar--ready',
+      'mt-status-bar--offline',
+    );
+    this.statusBarItem.addClass(`mt-status-bar--${state}`);
+  }
 
   private openModal(): void {
     new TranscriptionModal(
@@ -172,11 +193,13 @@ export default class LocalMeetingTranscriberPlugin extends Plugin {
       this.whisperManager.ping(),
       this.llmManager.ping(),
     ]);
+
     new Notice(
-      `Whisper server: ${whisperOk ? '✓ ready' : '✗ offline'}\n` +
-      `LLM server: ${llmOk ? '✓ ready' : '✗ offline'}`,
+      `Whisper server: ${whisperOk ? 'ready' : 'offline'}\n` +
+      `LLM server: ${llmOk ? 'ready' : 'offline'}`,
       5000,
     );
+
     await this.updateStatusBar();
   }
 }

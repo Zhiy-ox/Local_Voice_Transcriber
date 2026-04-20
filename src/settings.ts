@@ -1,35 +1,25 @@
-import { App, PluginSettingTab, Setting } from 'obsidian';
+import { App, ButtonComponent, Modal, Notice, PluginSettingTab, Setting } from 'obsidian';
+import { asError, execSync, fs, os, path } from './desktop';
 import type LocalMeetingTranscriberPlugin from './main';
-import { DEFAULT_SYSTEM_PROMPT } from './types';
+import { DEFAULT_SETTINGS, DEFAULT_SYSTEM_PROMPT } from './types';
 
-const { execSync } = (window as any).require('child_process') as typeof import('child_process');
-const fs = (window as any).require('fs') as typeof import('fs');
-const os = (window as any).require('os') as typeof import('os');
-const path = (window as any).require('path') as typeof import('path');
-
-// ── LLM backend presets ───────────────────────────────────────────────────────
-
-const LLM_PRESETS: Record<string, { url: string; hint: string }> = {
-  'ollama':       { url: 'http://127.0.0.1:11434', hint: 'Start command: ollama serve' },
-  'lm-studio':   { url: 'http://127.0.0.1:1234',  hint: 'Start command: open -a LM\\ Studio' },
-  'llama-cpp':   { url: 'http://127.0.0.1:8080',  hint: 'Start command: llama-server -m model.gguf --port 8080' },
-  'vmlx':        { url: 'http://127.0.0.1:8000',  hint: 'Start command: vmlx-serve serve /path/to/model --port 8000' },
-  'mlx-lm':      { url: 'http://127.0.0.1:8000',  hint: 'Start command: mlx_lm.server --model ~/models/llama --port 8000' },
-  'openai':      { url: 'https://api.openai.com',  hint: 'Set your API key above' },
+const LLM_PRESETS: Record<string, { url: string; command: string }> = {
+  ollama: { url: 'http://127.0.0.1:11434', command: 'ollama serve' },
+  'lm-studio': { url: 'http://127.0.0.1:1234', command: 'open -a LM\\ Studio' },
+  'llama-cpp': { url: 'http://127.0.0.1:8080', command: 'llama-server -m model.gguf --port 8080' },
+  vmlx: { url: 'http://127.0.0.1:8000', command: 'vmlx-serve serve /path/to/model --port 8000' },
+  'mlx-lm': { url: 'http://127.0.0.1:8000', command: 'mlx_lm.server --model ~/models/llama --port 8000' },
+  openai: { url: 'https://api.openai.com', command: '' },
 };
 
 export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
-  constructor(app: App, private plugin: LocalMeetingTranscriberPlugin) {
+  constructor(app: App, private readonly plugin: LocalMeetingTranscriberPlugin) {
     super(app, plugin);
   }
 
   display(): void {
     const { containerEl } = this;
     containerEl.empty();
-
-    new Setting(containerEl)
-      .setName('Local Meeting Transcriber')
-      .setHeading();
 
     this.renderWhisperSection(containerEl);
     this.renderFfmpegSection(containerEl);
@@ -39,143 +29,121 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
     this.renderActionsSection(containerEl);
   }
 
-  // ── Section 1: Speech-to-Text ─────────────────────────────────────────────
-
   private renderWhisperSection(el: HTMLElement): void {
     new Setting(el)
       .setName('Speech-to-text (whisper.cpp)')
       .setHeading();
 
     new Setting(el)
-      .setName('whisper-cli binary path')
-      .setDesc('Full path to the whisper-cli binary. Leave empty to auto-detect from /opt/homebrew/bin and /usr/local/bin. Install: brew install whisper-cpp')
-      .addText(text =>
+      .setName('Whisper-cli binary path')
+      .setDesc('Full path to the whisper-cli binary. Leave empty to auto-detect from common install locations.')
+      .addText((text) =>
         text
           .setPlaceholder('/opt/homebrew/bin/whisper-cli')
           .setValue(this.plugin.settings.whisperCliPath)
-          .onChange(async v => {
-            this.plugin.settings.whisperCliPath = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.whisperCliPath = value;
+            this.persistSettings();
+          }),
       );
 
     new Setting(el)
       .setName('Whisper model path')
-      .setDesc('Path to a GGML model file (.bin). Download from huggingface.co/ggerganov/whisper.cpp')
-      .addText(text =>
+      .setDesc('Path to a GGML model file (.bin). Download one from the whisper.cpp model repository.')
+      .addText((text) =>
         text
           .setPlaceholder('~/.whisper-models/ggml-base.en.bin')
           .setValue(this.plugin.settings.whisperModelPath)
-          .onChange(async v => {
-            this.plugin.settings.whisperModelPath = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.whisperModelPath = value;
+            this.persistSettings();
+          }),
       );
 
     new Setting(el)
       .setName('Default language')
-      .setDesc("Language code (en, zh, fr, de…) or 'auto' for auto-detection.")
-      .addText(text =>
+      .setDesc("Language code such as en, zh, fr, or de. Use 'auto' for auto-detection.")
+      .addText((text) =>
         text
           .setPlaceholder('en')
           .setValue(this.plugin.settings.defaultLanguage)
-          .onChange(async v => {
-            this.plugin.settings.defaultLanguage = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.defaultLanguage = value;
+            this.persistSettings();
+          }),
       );
 
     new Setting(el)
       .setName('Whisper server URL')
-      .setDesc('URL of a running whisper-server instance (used for connectivity checks only).')
-      .addText(text =>
+      .setDesc('URL of a running whisper-server instance used for connectivity checks.')
+      .addText((text) =>
         text
           .setPlaceholder('http://127.0.0.1:8178')
           .setValue(this.plugin.settings.whisperServerUrl)
-          .onChange(async v => {
-            this.plugin.settings.whisperServerUrl = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.whisperServerUrl = value;
+            this.persistSettings();
+          }),
       )
-      .addButton(btn =>
-        btn
+      .addButton((button) =>
+        button
           .setButtonText('Test')
-          .onClick(async () => {
-            const ok = await this.plugin.whisperManager.ping();
-            btn.setButtonText(ok ? '✓ reachable' : '✗ offline');
-            setTimeout(() => btn.setButtonText('Test'), 3000);
-          })
+          .onClick(() => {
+            void this.testServer(button, () => this.plugin.whisperManager.ping());
+          }),
       );
 
     new Setting(el)
-      .setName('Auto-start Whisper server')
-      .setDesc('Automatically run the start command below when the plugin loads.')
-      .addToggle(toggle =>
+      .setName('Auto-start whisper server')
+      .setDesc('Automatically run the configured start command when the plugin loads.')
+      .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.whisperAutoStart)
-          .onChange(async v => {
-            this.plugin.settings.whisperAutoStart = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.whisperAutoStart = value;
+            this.persistSettings();
+          }),
       );
 
     new Setting(el)
       .setName('Whisper server start command')
-      .setDesc('Shell command to start whisper-server (e.g. whisper-server --model ~/.whisper-models/ggml-base.en.bin --port 8178). Leave empty to manage it yourself.')
-      .addText(text =>
+      .setDesc('Shell command to start whisper-server. Leave empty if you start it yourself.')
+      .addText((text) =>
         text
           .setPlaceholder('whisper-server --model ~/.whisper-models/ggml-base.en.bin --port 8178')
           .setValue(this.plugin.settings.whisperStartCommand)
-          .onChange(async v => {
-            this.plugin.settings.whisperStartCommand = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.whisperStartCommand = value;
+            this.persistSettings();
+          }),
       );
   }
-
-  // ── Section 2: Audio conversion ───────────────────────────────────────────
 
   private renderFfmpegSection(el: HTMLElement): void {
     new Setting(el)
-      .setName('Audio conversion (ffmpeg)')
+      .setName('Audio conversion (FFmpeg)')
       .setHeading();
 
     new Setting(el)
-      .setName('ffmpeg path')
-      .setDesc('Path to the ffmpeg binary. Leave empty to auto-detect. Required for m4a, mp4, webm, aac input. Install: brew install ffmpeg')
-      .addText(text =>
+      .setName('FFmpeg path')
+      .setDesc('Path to the FFmpeg binary. Leave empty to auto-detect it from common install locations.')
+      .addText((text) =>
         text
           .setPlaceholder('(auto-detect)')
           .setValue(this.plugin.settings.ffmpegPath)
-          .onChange(async v => {
-            this.plugin.settings.ffmpegPath = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.ffmpegPath = value;
+            this.persistSettings();
+          }),
       )
-      .addButton(btn =>
-        btn
-          .setButtonText('Test ffmpeg')
+      .addButton((button) =>
+        button
+          .setButtonText('Test FFmpeg')
           .onClick(() => {
-            const ffmpegPath = this.resolveFfmpegForTest();
-            if (!ffmpegPath) {
-              btn.setButtonText('✗ not found');
-              setTimeout(() => btn.setButtonText('Test ffmpeg'), 3000);
-              return;
-            }
-            try {
-              const version = execSync(`"${ffmpegPath}" -version 2>&1`, { timeout: 3000 })
-                .toString()
-                .split('\n')[0];
-              btn.setButtonText(`✓ ${version.slice(0, 40)}`);
-            } catch {
-              btn.setButtonText('✗ error');
-            }
-            setTimeout(() => btn.setButtonText('Test ffmpeg'), 4000);
-          })
+            this.testFfmpeg(button);
+          }),
       );
   }
-
-  // ── Section 3: LLM server ─────────────────────────────────────────────────
 
   private renderLLMSection(el: HTMLElement): void {
     new Setting(el)
@@ -184,102 +152,100 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       .setHeading();
 
     el.createEl('p', {
-      text: 'Any OpenAI-compatible server works: ollama, llama.cpp, vmlx-serve, mlx_lm.server, LM Studio, or remote APIs.',
+      text: 'Any OpenAI-compatible server works: Ollama, llama.cpp, vmlx-serve, mlx_lm.server, LM Studio, or remote APIs.',
       cls: 'setting-item-description',
     });
 
-    // Preset picker
     new Setting(el)
       .setName('Backend preset')
-      .setDesc('Pre-fill URL and hint for a common backend. You can edit after.')
-      .addDropdown(dd => {
-        dd.addOption('', '— pick a preset —');
-        Object.keys(LLM_PRESETS).forEach(k => dd.addOption(k, k));
-        dd.onChange(v => {
-          if (!v) return;
-          const preset = LLM_PRESETS[v];
+      .setDesc('Pre-fill the API URL and suggested local command for a common backend.')
+      .addDropdown((dropdown) => {
+        dropdown.addOption('', 'Pick a preset…');
+        Object.keys(LLM_PRESETS).forEach((key) => dropdown.addOption(key, key));
+        dropdown.onChange((value) => {
+          if (!value) {
+            return;
+          }
+
+          const preset = LLM_PRESETS[value];
           this.plugin.settings.llmUrl = preset.url;
-          this.plugin.settings.llmStartCommand = preset.hint.replace('Start command: ', '');
-          this.plugin.saveSettings().then(() => this.display());
+          this.plugin.settings.llmStartCommand = preset.command;
+          this.persistSettingsAndRefresh();
         });
       });
 
     new Setting(el)
       .setName('LLM server URL')
       .setDesc('Base URL of the OpenAI-compatible API.')
-      .addText(text =>
+      .addText((text) =>
         text
           .setPlaceholder('http://127.0.0.1:11434')
           .setValue(this.plugin.settings.llmUrl)
-          .onChange(async v => {
-            this.plugin.settings.llmUrl = v.replace(/\/$/, '');
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.llmUrl = value.replace(/\/$/, '');
+            this.persistSettings();
+          }),
       )
-      .addButton(btn =>
-        btn
+      .addButton((button) =>
+        button
           .setButtonText('Test')
-          .onClick(async () => {
-            const ok = await this.plugin.llmManager.ping();
-            btn.setButtonText(ok ? '✓ reachable' : '✗ offline');
-            setTimeout(() => btn.setButtonText('Test'), 3000);
-          })
+          .onClick(() => {
+            void this.testServer(button, () => this.plugin.llmManager.ping());
+          }),
       );
 
     new Setting(el)
       .setName('Model name')
-      .setDesc('Model ID sent in the API request. For ollama: llama3, mistral, etc. For OpenAI: gpt-4o, etc.')
-      .addText(text =>
+      .setDesc('Model ID sent in the API request, for example llama3 or gpt-4o.')
+      .addText((text) =>
         text
           .setPlaceholder('llama3')
           .setValue(this.plugin.settings.llmModel)
-          .onChange(async v => {
-            this.plugin.settings.llmModel = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.llmModel = value;
+            this.persistSettings();
+          }),
       );
 
     new Setting(el)
       .setName('API key')
-      .setDesc('Bearer token. Leave empty for local servers. Required for OpenAI, Groq, Anthropic proxies, etc.')
-      .addText(text => {
+      .setDesc('Bearer token. Leave empty for local servers.')
+      .addText((text) => {
         text
           .setPlaceholder('(optional)')
           .setValue(this.plugin.settings.llmApiKey)
-          .onChange(async v => {
-            this.plugin.settings.llmApiKey = v;
-            await this.plugin.saveSettings();
+          .onChange((value) => {
+            this.plugin.settings.llmApiKey = value;
+            this.persistSettings();
           });
         text.inputEl.type = 'password';
       });
 
     new Setting(el)
       .setName('Auto-start LLM server')
-      .setDesc('Run the start command below when the plugin loads.')
-      .addToggle(toggle =>
+      .setDesc('Automatically run the configured start command when the plugin loads.')
+      .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.llmAutoStart)
-          .onChange(async v => {
-            this.plugin.settings.llmAutoStart = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.llmAutoStart = value;
+            this.persistSettings();
+          }),
       );
 
     new Setting(el)
       .setName('LLM server start command')
-      .setDesc('Shell command to start your local LLM server. The plugin waits up to 5 minutes for it to become reachable.')
-      .addText(text =>
+      .setDesc('Shell command to start your local LLM server.')
+      .addText((text) =>
         text
           .setPlaceholder('ollama serve')
           .setValue(this.plugin.settings.llmStartCommand)
-          .onChange(async v => {
-            this.plugin.settings.llmStartCommand = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.llmStartCommand = value;
+            this.persistSettings();
+          }),
       );
   }
-
-  // ── Section 4: Prompt ─────────────────────────────────────────────────────
 
   private renderPromptSection(el: HTMLElement): void {
     new Setting(el)
@@ -288,44 +254,40 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('System prompt')
-      .setDesc('The system prompt sent to the LLM. Must instruct it to return JSON with fields: title, participants, summary, discussion, action_items, decisions, tags.')
-      .addTextArea(ta => {
-        ta.setValue(this.plugin.settings.systemPrompt)
-          .onChange(async v => {
-            this.plugin.settings.systemPrompt = v;
-            await this.plugin.saveSettings();
+      .setDesc('The system prompt sent to the LLM. It must instruct the model to return JSON with the expected fields.')
+      .addTextArea((textarea) => {
+        textarea
+          .setValue(this.plugin.settings.systemPrompt)
+          .onChange((value) => {
+            this.plugin.settings.systemPrompt = value;
+            this.persistSettings();
           });
-        ta.inputEl.rows = 14;
-        ta.inputEl.style.width = '100%';
-        ta.inputEl.style.fontFamily = 'monospace';
-        ta.inputEl.style.fontSize = '0.82em';
+        textarea.inputEl.rows = 14;
+        textarea.inputEl.addClass('mt-system-prompt-input');
       })
-      .addButton(btn =>
-        btn
+      .addButton((button) =>
+        button
           .setButtonText('Reset to default')
           .setWarning()
-          .onClick(async () => {
+          .onClick(() => {
             this.plugin.settings.systemPrompt = DEFAULT_SYSTEM_PROMPT;
-            await this.plugin.saveSettings();
-            this.display();
-          })
+            this.persistSettingsAndRefresh();
+          }),
       );
 
     new Setting(el)
       .setName('Speaker / context hint')
-      .setDesc('Injected into every request as additional context. Useful for recurring meetings where participants are always the same.')
-      .addText(text =>
+      .setDesc('Injected into every request as extra context for recurring meetings or known participants.')
+      .addText((text) =>
         text
           .setPlaceholder('e.g. Alice (PM), Bob (engineering lead)')
           .setValue(this.plugin.settings.speakerHint)
-          .onChange(async v => {
-            this.plugin.settings.speakerHint = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.speakerHint = value;
+            this.persistSettings();
+          }),
       );
   }
-
-  // ── Section 5: Output ─────────────────────────────────────────────────────
 
   private renderOutputSection(el: HTMLElement): void {
     new Setting(el)
@@ -334,31 +296,29 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Meetings folder')
-      .setDesc('Vault-relative folder where notes are saved. Created automatically if it does not exist.')
-      .addText(text =>
+      .setDesc('Vault-relative folder where notes are saved. The plugin creates it if needed.')
+      .addText((text) =>
         text
           .setPlaceholder('Meetings')
           .setValue(this.plugin.settings.meetingsFolder)
-          .onChange(async v => {
-            this.plugin.settings.meetingsFolder = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.meetingsFolder = value;
+            this.persistSettings();
+          }),
       );
 
     new Setting(el)
       .setName('Include raw transcript')
-      .setDesc('Append the full whisper transcript to the note inside a collapsible HTML details block.')
-      .addToggle(toggle =>
+      .setDesc('Append the full whisper transcript to the note inside a collapsible details block.')
+      .addToggle((toggle) =>
         toggle
           .setValue(this.plugin.settings.includeRawTranscript)
-          .onChange(async v => {
-            this.plugin.settings.includeRawTranscript = v;
-            await this.plugin.saveSettings();
-          })
+          .onChange((value) => {
+            this.plugin.settings.includeRawTranscript = value;
+            this.persistSettings();
+          }),
       );
   }
-
-  // ── Section 6: Actions ────────────────────────────────────────────────────
 
   private renderActionsSection(el: HTMLElement): void {
     new Setting(el)
@@ -366,74 +326,133 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       .setHeading();
 
     new Setting(el)
-      .setName('Start Whisper server')
-      .setDesc('Run the configured Whisper start command now.')
-      .addButton(btn =>
-        btn
-          .setButtonText('Start Whisper server')
-          .onClick(async () => {
-            btn.setButtonText('Starting…');
-            btn.setDisabled(true);
-            const ok = await this.plugin.whisperManager.startIfNeeded();
-            btn.setButtonText(ok ? '✓ Ready' : '✗ Failed');
-            btn.setDisabled(false);
-            setTimeout(() => btn.setButtonText('Start Whisper server'), 4000);
-          })
+      .setName('Start whisper server')
+      .setDesc('Run the configured whisper start command now.')
+      .addButton((button) =>
+        button
+          .setButtonText('Start whisper server')
+          .onClick(() => {
+            void this.startManagedServer(button, () => this.plugin.whisperManager.startIfNeeded(), 'Start whisper server');
+          }),
       );
 
     new Setting(el)
       .setName('Start LLM server')
       .setDesc('Run the configured LLM start command now.')
-      .addButton(btn =>
-        btn
+      .addButton((button) =>
+        button
           .setButtonText('Start LLM server')
-          .onClick(async () => {
-            btn.setButtonText('Starting…');
-            btn.setDisabled(true);
-            const ok = await this.plugin.llmManager.startIfNeeded();
-            btn.setButtonText(ok ? '✓ Ready' : '✗ Failed');
-            btn.setDisabled(false);
-            setTimeout(() => btn.setButtonText('Start LLM server'), 4000);
-          })
+          .onClick(() => {
+            void this.startManagedServer(button, () => this.plugin.llmManager.startIfNeeded(), 'Start LLM server');
+          }),
       );
 
     new Setting(el)
       .setName('Check server status')
-      .setDesc('Ping both servers and show current connectivity.')
-      .addButton(btn =>
-        btn
+      .setDesc('Ping both servers and show their current connectivity.')
+      .addButton((button) =>
+        button
           .setButtonText('Check status')
-          .onClick(async () => {
-            btn.setButtonText('Checking…');
-            const [whisperOk, llmOk] = await Promise.all([
-              this.plugin.whisperManager.ping(),
-              this.plugin.llmManager.ping(),
-            ]);
-            btn.setButtonText(
-              `Whisper: ${whisperOk ? '✓' : '✗'}  LLM: ${llmOk ? '✓' : '✗'}`,
-            );
-            setTimeout(() => btn.setButtonText('Check status'), 5000);
-          })
+          .onClick(() => {
+            void this.checkServerStatus(button);
+          }),
       );
 
     new Setting(el)
       .setName('Reset all settings')
-      .setDesc('Restore all settings to their defaults. This cannot be undone.')
-      .addButton(btn =>
-        btn
+      .setDesc('Restore all settings to their defaults.')
+      .addButton((button) =>
+        button
           .setButtonText('Reset to defaults')
           .setWarning()
-          .onClick(async () => {
-            if (!confirm('Reset all Local Meeting Transcriber settings to defaults?')) return;
-            const { DEFAULT_SETTINGS } = await import('./types');
-            Object.assign(this.plugin.settings, DEFAULT_SETTINGS);
-            await this.plugin.saveSettings();
-            this.display();
-          })
+          .onClick(() => {
+            void this.resetAllSettings();
+          }),
       );
   }
 
-  // ── Private helpers ────────────────────────────────────────────────────────
+  private persistSettings(): void {
+    this.runTask(async () => {
+      await this.plugin.saveSettings();
+    }, 'Could not save settings');
+  }
+
+  private persistSettingsAndRefresh(): void {
+    this.runTask(async () => {
+      await this.plugin.saveSettings();
+      this.display();
+    }, 'Could not save settings');
+  }
+
+  private runTask(task: () => Promise<void>, failurePrefix: string): void {
+    void task().catch((error) => {
+      new Notice(`Local Meeting Transcriber: ${failurePrefix} — ${asError(error).message}`, 8000);
+    });
+  }
+
+  private async testServer(button: ButtonComponent, ping: () => Promise<boolean>): Promise<void> {
+    const ok = await ping();
+    button.setButtonText(ok ? 'Ready' : 'Offline');
+    window.setTimeout(() => button.setButtonText('Test'), 3000);
+  }
+
+  private testFfmpeg(button: ButtonComponent): void {
+    const ffmpegPath = this.resolveFfmpegForTest();
+    if (!ffmpegPath) {
+      button.setButtonText('Not found');
+      window.setTimeout(() => button.setButtonText('Test FFmpeg'), 3000);
+      return;
+    }
+
+    try {
+      const version = execSync(`"${ffmpegPath}" -version 2>&1`, { timeout: 3000 })
+        .toString()
+        .split('\n')[0];
+      button.setButtonText(version.slice(0, 40));
+    } catch {
+      button.setButtonText('Error');
+    }
+
+    window.setTimeout(() => button.setButtonText('Test FFmpeg'), 4000);
+  }
+
+  private async startManagedServer(
+    button: ButtonComponent,
+    start: () => Promise<boolean>,
+    resetLabel: string,
+  ): Promise<void> {
+    button.setButtonText('Starting…');
+    button.setDisabled(true);
+
+    try {
+      const ok = await start();
+      button.setButtonText(ok ? 'Ready' : 'Failed');
+    } finally {
+      button.setDisabled(false);
+      window.setTimeout(() => button.setButtonText(resetLabel), 4000);
+    }
+  }
+
+  private async checkServerStatus(button: ButtonComponent): Promise<void> {
+    button.setButtonText('Checking…');
+    const [whisperOk, llmOk] = await Promise.all([
+      this.plugin.whisperManager.ping(),
+      this.plugin.llmManager.ping(),
+    ]);
+    button.setButtonText(`Whisper: ${whisperOk ? 'ready' : 'offline'} | LLM: ${llmOk ? 'ready' : 'offline'}`);
+    window.setTimeout(() => button.setButtonText('Check status'), 5000);
+  }
+
+  private async resetAllSettings(): Promise<void> {
+    const confirmed = await new ResetSettingsModal(this.app).openAndWait();
+    if (!confirmed) {
+      return;
+    }
+
+    Object.assign(this.plugin.settings, DEFAULT_SETTINGS);
+    await this.plugin.saveSettings();
+    this.display();
+  }
 
   private resolveFfmpegForTest(): string | null {
     const settingPath = this.plugin.settings.ffmpegPath.trim();
@@ -443,14 +462,73 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
         : settingPath;
       return fs.existsSync(resolved) ? resolved : null;
     }
-    const CANDIDATES = ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg'];
-    for (const c of CANDIDATES) {
-      if (fs.existsSync(c)) return c;
+
+    const candidates = ['/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg'];
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
     }
+
     try {
       const result = execSync('which ffmpeg 2>/dev/null', { timeout: 2000 }).toString().trim();
-      if (result && fs.existsSync(result)) return result;
-    } catch { /* noop */ }
+      if (result && fs.existsSync(result)) {
+        return result;
+      }
+    } catch {
+      return null;
+    }
+
     return null;
+  }
+}
+
+class ResetSettingsModal extends Modal {
+  private resolvePromise: ((value: boolean) => void) | null = null;
+  private settled = false;
+
+  openAndWait(): Promise<boolean> {
+    this.open();
+    return new Promise((resolve) => {
+      this.resolvePromise = resolve;
+    });
+  }
+
+  onOpen(): void {
+    const { contentEl } = this;
+    contentEl.createEl('h2', { text: 'Reset settings?' });
+    contentEl.createEl('p', {
+      text: 'Restore all plugin settings to their defaults. This cannot be undone.',
+    });
+
+    const actions = contentEl.createDiv('mt-actions');
+    const cancelButton = actions.createEl('button', { text: 'Cancel', cls: 'mt-btn' });
+    cancelButton.addEventListener('click', () => this.closeWithResult(false));
+
+    const confirmButton = actions.createEl('button', {
+      text: 'Reset settings',
+      cls: 'mt-btn mt-btn--primary',
+    });
+    confirmButton.addEventListener('click', () => this.closeWithResult(true));
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+    this.finish(false);
+  }
+
+  private finish(result: boolean): void {
+    if (this.settled) {
+      return;
+    }
+
+    this.settled = true;
+    this.resolvePromise?.(result);
+    this.resolvePromise = null;
+  }
+
+  private closeWithResult(result: boolean): void {
+    this.finish(result);
+    this.close();
   }
 }

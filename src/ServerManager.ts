@@ -1,7 +1,5 @@
 import { Notice } from 'obsidian';
-
-const { spawn } = (window as any).require('child_process') as typeof import('child_process');
-const os = (window as any).require('os') as typeof import('os');
+import { os, spawn } from './desktop';
 
 export class ServerManager {
   private process: ReturnType<typeof spawn> | null = null;

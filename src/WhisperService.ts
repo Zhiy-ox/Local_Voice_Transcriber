@@ -1,10 +1,6 @@
 import { requestUrl } from 'obsidian';
 import type { MeetingTranscriberSettings, TranscriptionResult } from './types';
-
-const fs = (window as any).require('fs') as typeof import('fs');
-const os = (window as any).require('os') as typeof import('os');
-const path = (window as any).require('path') as typeof import('path');
-const { spawn, execSync } = (window as any).require('child_process') as typeof import('child_process');
+import { asError, execSync, fs, os, path, spawn } from './desktop';
 
 export class WhisperService {
   constructor(private settings: MeetingTranscriberSettings) {}
@@ -222,7 +218,7 @@ function raceRequest<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
       },
       error => {
         window.clearTimeout(timeout);
-        reject(error);
+        reject(asError(error));
       },
     );
   });
@@ -233,9 +229,9 @@ function parseCliJson(json: unknown): TranscriptionResult {
   const items: unknown[] = Array.isArray(j.transcription) ? j.transcription : [];
 
   const segments = (items as Record<string, unknown>[]).map(s => ({
-    start: parseTimestamp(String((s.timestamps as Record<string, unknown>)?.from ?? '00:00:00,000')),
-    end: parseTimestamp(String((s.timestamps as Record<string, unknown>)?.to ?? '00:00:00,000')),
-    text: String(s.text ?? '').trim(),
+    start: parseTimestamp(readTimestampValue(s.timestamps, 'from')),
+    end: parseTimestamp(readTimestampValue(s.timestamps, 'to')),
+    text: readTextValue(s.text),
   }));
 
   const text = segments.map(s => s.text).join(' ').trim();
@@ -249,4 +245,17 @@ function parseTimestamp(ts: string): number {
   const [time, ms] = ts.split(',');
   const [h, m, s] = (time ?? '0:0:0').split(':').map(Number);
   return h * 3600 + m * 60 + s + (Number(ms ?? 0) / 1000);
+}
+
+function readTimestampValue(value: unknown, key: 'from' | 'to'): string {
+  if (!value || typeof value !== 'object') {
+    return '00:00:00,000';
+  }
+
+  const timestamp = (value as Record<string, unknown>)[key];
+  return typeof timestamp === 'string' ? timestamp : '00:00:00,000';
+}
+
+function readTextValue(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : '';
 }

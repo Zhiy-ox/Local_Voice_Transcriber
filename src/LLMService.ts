@@ -1,11 +1,12 @@
 import { requestUrl } from 'obsidian';
 import type { MeetingTranscriberSettings, MeetingNote, TranscriptionResult, NoteType } from './types';
+import { asError } from './desktop';
 
 const NOTE_TYPE_LABELS: Record<NoteType, string> = {
-  general: 'General Meeting',
-  'research-meeting': 'Research Meeting',
+  general: 'General meeting',
+  'research-meeting': 'Research meeting',
   supervision: 'Supervision / 1-on-1',
-  'conference-call': 'Conference Call',
+  'conference-call': 'Conference call',
 };
 
 export class LLMService {
@@ -181,7 +182,7 @@ function raceRequest<T>(promise: Promise<T>, timeoutMs: number, signal?: AbortSi
       },
       error => {
         cleanup();
-        reject(error);
+        reject(asError(error));
       },
     );
   });
