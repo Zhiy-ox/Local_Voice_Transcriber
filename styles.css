@@ -1,0 +1,126 @@
+/* Meeting Transcriber — Modal Styles */
+
+.mt-modal {
+  min-width: 480px;
+  max-width: 640px;
+}
+
+/* ── Drop zone ─────────────────────────────────────────────────────────────── */
+
+.mt-drop-zone {
+  border: 2px dashed var(--background-modifier-border);
+  border-radius: 8px;
+  padding: 32px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  margin-bottom: 8px;
+}
+
+.mt-drop-zone:hover,
+.mt-drop-zone--active {
+  border-color: var(--interactive-accent);
+  background: var(--background-modifier-hover);
+}
+
+.mt-drop-zone--selected {
+  border-color: var(--color-green);
+  border-style: solid;
+}
+
+.mt-filename {
+  font-size: 0.85em;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  padding-left: 4px;
+}
+
+/* ── Options ───────────────────────────────────────────────────────────────── */
+
+.mt-options {
+  margin-bottom: 12px;
+}
+
+/* ── Progress ──────────────────────────────────────────────────────────────── */
+
+.mt-progress {
+  background: var(--background-secondary);
+  border-radius: 6px;
+  padding: 12px 16px;
+  margin-bottom: 12px;
+}
+
+.mt-status {
+  margin: 0 0 8px;
+  font-size: 0.9em;
+}
+
+.mt-status--done {
+  color: var(--color-green);
+  font-weight: 600;
+}
+
+.mt-status--error {
+  color: var(--color-red);
+}
+
+.mt-stages {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.mt-stage-dot {
+  font-size: 0.78em;
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--background-modifier-border);
+  color: var(--text-muted);
+}
+
+.mt-stage-dot--active {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+}
+
+.mt-stage-dot--done {
+  background: var(--color-green);
+  color: white;
+}
+
+.mt-link {
+  display: inline-block;
+  margin-top: 6px;
+  cursor: pointer;
+  color: var(--interactive-accent);
+  text-decoration: underline;
+  font-size: 0.88em;
+}
+
+/* ── Actions row ───────────────────────────────────────────────────────────── */
+
+.mt-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mt-btn {
+  padding: 6px 16px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 0.9em;
+}
+
+.mt-btn--primary {
+  background: var(--interactive-accent);
+  color: var(--text-on-accent);
+  border: none;
+}
+
+.mt-btn--primary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

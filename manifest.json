@@ -1,0 +1,10 @@
+{
+  "id": "local-meeting-transcriber",
+  "name": "Local Meeting Transcriber",
+  "version": "0.1.0",
+  "minAppVersion": "1.0.0",
+  "description": "Transcribe meeting recordings locally with whisper.cpp and any OpenAI-compatible LLM (ollama, llama.cpp, vmlx-serve, LM Studio, or remote APIs). Generates structured notes with title, participants, action items, and decisions.",
+  "author": "Zhiyu Xu",
+  "authorUrl": "https://github.com/zhiyu-xu",
+  "isDesktopOnly": true
+}
