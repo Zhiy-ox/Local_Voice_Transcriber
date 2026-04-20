@@ -16,6 +16,17 @@ An Obsidian plugin that turns meeting recordings into structured notes — entir
 
 ---
 
+## Privacy and Security
+
+- The plugin is **desktop-only** and uses local system binaries such as `whisper-cli` and `ffmpeg`.
+- It reads the audio file you choose and writes the generated note into your vault.
+- It can connect to the Whisper health-check URL and the LLM API URL you configure.
+- If you point the LLM URL at a **remote** service, your transcript and prompt data are sent to that service.
+- It can run **user-configured shell commands** to start local servers, but only if you explicitly enter those commands in settings and trigger them manually or enable auto-start.
+- The plugin itself does **not** require an account, does **not** include ads, and does **not** include telemetry.
+
+---
+
 ## Requirements
 
 - **Obsidian** desktop (macOS, Windows, Linux)
@@ -57,7 +68,7 @@ An Obsidian plugin that turns meeting recordings into structured notes — entir
 Settings → Community plugins → Browse → search **"Local Meeting Transcriber"** → Install → Enable
 
 ### Manual installation
-1. Download `main.js`, `manifest.json`, `styles.css` from the [latest release](../../releases/latest)
+1. Download `main.js`, `manifest.json`, `styles.css` from the [latest release](https://github.com/Zhiy-ox/Local_Voice_Transcriber/releases/latest)
 2. Place in `.obsidian/plugins/local-meeting-transcriber/` inside your vault
 3. Enable in Settings → Community plugins
 
@@ -210,8 +221,8 @@ Full whisper output…
 ## Development
 
 ```bash
-git clone https://github.com/zhiyu-xu/obsidian-local-meeting-transcriber
-cd obsidian-local-meeting-transcriber
+git clone https://github.com/Zhiy-ox/Local_Voice_Transcriber.git
+cd Local_Voice_Transcriber
 npm install
 npm run dev   # watch mode
 npm run build # production build

@@ -1,3 +1,4 @@
+import { requestUrl } from 'obsidian';
 import type { MeetingTranscriberSettings, TranscriptionResult } from './types';
 
 const fs = (window as any).require('fs') as typeof import('fs');
@@ -16,10 +17,14 @@ export class WhisperService {
 
   async ping(): Promise<boolean> {
     try {
-      const res = await fetch(`${this.settings.whisperServerUrl}/health`, {
-        signal: AbortSignal.timeout(2000),
-      });
-      return res.ok;
+      const res = await raceRequest(
+        requestUrl({
+          url: `${this.settings.whisperServerUrl}/health`,
+          throw: false,
+        }),
+        2000,
+      );
+      return res.status >= 200 && res.status < 300;
     } catch {
       return false;
     }
@@ -204,6 +209,22 @@ function spawnProcess(
       proc.kill();
       reject(new Error('Transcription cancelled'));
     }, { once: true });
+  });
+}
+
+function raceRequest<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => reject(new Error('Request timed out')), timeoutMs);
+    promise.then(
+      value => {
+        window.clearTimeout(timeout);
+        resolve(value);
+      },
+      error => {
+        window.clearTimeout(timeout);
+        reject(error);
+      },
+    );
   });
 }
 

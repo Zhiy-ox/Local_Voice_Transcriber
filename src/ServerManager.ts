@@ -57,7 +57,6 @@ export class ServerManager {
     this.process.stderr?.on('data', (d: Buffer) => {
       const txt = d.toString();
       stderrBuf += txt;
-      console.log(`[${this.name}]`, txt.trim());
     });
 
     this.process.on('error', (err: Error) => {
@@ -73,7 +72,6 @@ export class ServerManager {
           `Local Meeting Transcriber: ${this.name} server crashed (code ${code})\n${tail}`,
           10000,
         );
-        console.error(`[${this.name} crash]`, stderrBuf);
       }
       this.process = null;
     });

@@ -89,8 +89,9 @@ export default class LocalMeetingTranscriberPlugin extends Plugin {
 
     this.addSettingTab(new LocalMeetingTranscriberSettingTab(this.app, this));
 
-    // Auto-start on load (non-blocking)
-    this.startAllServers();
+    this.app.workspace.onLayoutReady(() => {
+      void this.startAllServers();
+    });
 
     // Re-check status bar every 30 s
     this.registerInterval(window.setInterval(() => this.updateStatusBar(), 30_000));

@@ -27,7 +27,9 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl('h2', { text: 'Local Meeting Transcriber' });
+    new Setting(containerEl)
+      .setName('Local Meeting Transcriber')
+      .setHeading();
 
     this.renderWhisperSection(containerEl);
     this.renderFfmpegSection(containerEl);
@@ -40,7 +42,9 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
   // ── Section 1: Speech-to-Text ─────────────────────────────────────────────
 
   private renderWhisperSection(el: HTMLElement): void {
-    el.createEl('h3', { text: '🎙️ Speech-to-Text (whisper.cpp)' });
+    new Setting(el)
+      .setName('Speech-to-text (whisper.cpp)')
+      .setHeading();
 
     new Setting(el)
       .setName('whisper-cli binary path')
@@ -132,7 +136,9 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
   // ── Section 2: Audio conversion ───────────────────────────────────────────
 
   private renderFfmpegSection(el: HTMLElement): void {
-    el.createEl('h3', { text: '🔄 Audio Conversion (ffmpeg)' });
+    new Setting(el)
+      .setName('Audio conversion (ffmpeg)')
+      .setHeading();
 
     new Setting(el)
       .setName('ffmpeg path')
@@ -172,7 +178,10 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
   // ── Section 3: LLM server ─────────────────────────────────────────────────
 
   private renderLLMSection(el: HTMLElement): void {
-    el.createEl('h3', { text: '🤖 LLM Server (note generation)' });
+    new Setting(el)
+      .setName('LLM server')
+      .setDesc('Used for note generation.')
+      .setHeading();
 
     el.createEl('p', {
       text: 'Any OpenAI-compatible server works: ollama, llama.cpp, vmlx-serve, mlx_lm.server, LM Studio, or remote APIs.',
@@ -273,7 +282,9 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
   // ── Section 4: Prompt ─────────────────────────────────────────────────────
 
   private renderPromptSection(el: HTMLElement): void {
-    el.createEl('h3', { text: '📝 Prompt' });
+    new Setting(el)
+      .setName('Prompt')
+      .setHeading();
 
     new Setting(el)
       .setName('System prompt')
@@ -317,7 +328,9 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
   // ── Section 5: Output ─────────────────────────────────────────────────────
 
   private renderOutputSection(el: HTMLElement): void {
-    el.createEl('h3', { text: '📁 Output' });
+    new Setting(el)
+      .setName('Output')
+      .setHeading();
 
     new Setting(el)
       .setName('Meetings folder')
@@ -348,7 +361,9 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
   // ── Section 6: Actions ────────────────────────────────────────────────────
 
   private renderActionsSection(el: HTMLElement): void {
-    el.createEl('h3', { text: '⚡ Actions' });
+    new Setting(el)
+      .setName('Actions')
+      .setHeading();
 
     new Setting(el)
       .setName('Start Whisper server')

@@ -1,3 +1,4 @@
+import { requestUrl } from 'obsidian';
 import type { MeetingTranscriberSettings, MeetingNote, TranscriptionResult, NoteType } from './types';
 
 const NOTE_TYPE_LABELS: Record<NoteType, string> = {
@@ -22,11 +23,15 @@ export class LLMService {
       if (this.settings.llmApiKey) {
         headers['Authorization'] = `Bearer ${this.settings.llmApiKey}`;
       }
-      const res = await fetch(`${this.settings.llmUrl}/v1/models`, {
-        headers,
-        signal: AbortSignal.timeout(3000),
-      });
-      return res.ok;
+      const res = await raceRequest(
+        requestUrl({
+          url: `${this.settings.llmUrl}/v1/models`,
+          headers,
+          throw: false,
+        }),
+        3000,
+      );
+      return res.status >= 200 && res.status < 300;
     } catch {
       return false;
     }
@@ -60,19 +65,24 @@ export class LLMService {
       response_format: { type: 'json_object' },
     };
 
-    const res = await fetch(`${this.settings.llmUrl}/v1/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
+    const res = await raceRequest(
+      requestUrl({
+        url: `${this.settings.llmUrl}/v1/chat/completions`,
+        method: 'POST',
+        headers,
+        body: JSON.stringify(body),
+        contentType: 'application/json',
+        throw: false,
+      }),
+      120_000,
       signal,
-    });
+    );
 
-    if (!res.ok) {
-      const text = await res.text();
-      throw new Error(`LLM returned ${res.status}: ${text.slice(0, 300)}`);
+    if (res.status < 200 || res.status >= 300) {
+      throw new Error(`LLM returned ${res.status}: ${res.text.slice(0, 300)}`);
     }
 
-    const json = await res.json();
+    const json = res.json;
     const content: string = json.choices?.[0]?.message?.content ?? '';
     return this.parseNote(content);
   }
@@ -143,4 +153,36 @@ Generate structured meeting notes following the JSON schema exactly. Return JSON
 function toStringArray(val: unknown): string[] {
   if (!Array.isArray(val)) return [];
   return val.map(String);
+}
+
+function raceRequest<T>(promise: Promise<T>, timeoutMs: number, signal?: AbortSignal): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timeout = window.setTimeout(() => {
+      cleanup();
+      reject(new Error('Request timed out'));
+    }, timeoutMs);
+
+    const onAbort = () => {
+      cleanup();
+      reject(new Error('Request cancelled'));
+    };
+
+    const cleanup = () => {
+      window.clearTimeout(timeout);
+      signal?.removeEventListener('abort', onAbort);
+    };
+
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    promise.then(
+      value => {
+        cleanup();
+        resolve(value);
+      },
+      error => {
+        cleanup();
+        reject(error);
+      },
+    );
+  });
 }
