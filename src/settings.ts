@@ -65,7 +65,7 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       .setDesc("Language code such as en, zh, fr, or de. Use 'auto' for auto-detection.")
       .addText((text) =>
         text
-          .setPlaceholder('en')
+          .setPlaceholder('En')
           .setValue(this.plugin.settings.defaultLanguage)
           .onChange((value) => {
             this.plugin.settings.defaultLanguage = value;
@@ -125,7 +125,7 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       .setHeading();
 
     new Setting(el)
-      .setName('ffmpeg path')
+      .setName('Ffmpeg path')
       .setDesc('Path to the ffmpeg binary. Leave empty to auto-detect it from common install locations.')
       .addText((text) =>
         text
@@ -152,7 +152,7 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       .setHeading();
 
     el.createEl('p', {
-      text: 'Supports local and remote compatible services, including Ollama and LM Studio.',
+      text: 'Supports local and remote compatible services.',
       cls: 'setting-item-description',
     });
 
