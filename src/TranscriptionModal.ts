@@ -135,11 +135,11 @@ export class TranscriptionModal extends Modal {
     this.optionsEl = parent.createDiv('mt-options');
 
     new Setting(this.optionsEl)
-      .setName('Context / participants')
-      .setDesc('Names, roles, or topics. Helps the LLM identify speakers and tag correctly.')
+      .setName('Context and participants')
+      .setDesc('Names, roles, or topics. Helps the model identify speakers and tag correctly.')
       .addText((text) =>
         text
-          .setPlaceholder('e.g. Alice, Bob (client), Carol — Q2 planning')
+          .setPlaceholder('Add names, roles, or topics')
           .onChange((value) => {
             this.contextText = value;
           }),
@@ -264,7 +264,7 @@ export class TranscriptionModal extends Modal {
       this.startBtn.disabled = false;
       this.startBtn.textContent = 'Start pipeline';
       this.setStatus({ stage: 'idle' });
-      new Notice('Local Meeting Transcriber: canceled.');
+      new Notice('Canceled.');
     });
 
     this.startBtn = row.createEl('button', {

@@ -81,7 +81,7 @@ export default class LocalMeetingTranscriberPlugin extends Plugin {
 
     this.addCommand({
       id: 'start-llm-server',
-      name: 'Start LLM server',
+      name: 'Start language model server',
       callback: () => {
         void this.llmManager.startIfNeeded();
       },

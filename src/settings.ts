@@ -35,11 +35,11 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       .setHeading();
 
     new Setting(el)
-      .setName('Whisper-cli binary path')
-      .setDesc('Full path to the whisper-cli binary. Leave empty to auto-detect from common install locations.')
+      .setName('Whisper binary path')
+      .setDesc('Full path to the whisper binary. Leave empty to auto-detect it from common install locations.')
       .addText((text) =>
         text
-          .setPlaceholder('/opt/homebrew/bin/whisper-cli')
+          .setPlaceholder('Enter a binary path')
           .setValue(this.plugin.settings.whisperCliPath)
           .onChange((value) => {
             this.plugin.settings.whisperCliPath = value;
@@ -49,10 +49,10 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Whisper model path')
-      .setDesc('Path to a GGML model file (.bin). Download one from the whisper.cpp model repository.')
+      .setDesc('Path to a whisper model file. Download one from the whisper.cpp model repository.')
       .addText((text) =>
         text
-          .setPlaceholder('~/.whisper-models/ggml-base.en.bin')
+          .setPlaceholder('Enter a model path')
           .setValue(this.plugin.settings.whisperModelPath)
           .onChange((value) => {
             this.plugin.settings.whisperModelPath = value;
@@ -74,8 +74,8 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       );
 
     new Setting(el)
-      .setName('Whisper server URL')
-      .setDesc('URL of a running whisper-server instance used for connectivity checks.')
+      .setName('Whisper server address')
+      .setDesc('Web address of a running whisper-server instance used for connectivity checks.')
       .addText((text) =>
         text
           .setPlaceholder('http://127.0.0.1:8178')
@@ -121,12 +121,12 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
 
   private renderFfmpegSection(el: HTMLElement): void {
     new Setting(el)
-      .setName('Audio conversion (FFmpeg)')
+      .setName('Audio conversion')
       .setHeading();
 
     new Setting(el)
-      .setName('FFmpeg path')
-      .setDesc('Path to the FFmpeg binary. Leave empty to auto-detect it from common install locations.')
+      .setName('ffmpeg path')
+      .setDesc('Path to the ffmpeg binary. Leave empty to auto-detect it from common install locations.')
       .addText((text) =>
         text
           .setPlaceholder('(auto-detect)')
@@ -138,7 +138,7 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       )
       .addButton((button) =>
         button
-          .setButtonText('Test FFmpeg')
+          .setButtonText('Test ffmpeg')
           .onClick(() => {
             this.testFfmpeg(button);
           }),
@@ -147,21 +147,23 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
 
   private renderLLMSection(el: HTMLElement): void {
     new Setting(el)
-      .setName('LLM server')
+      .setName('Language model server')
       .setDesc('Used for note generation.')
       .setHeading();
 
     el.createEl('p', {
-      text: 'Any OpenAI-compatible server works: Ollama, llama.cpp, vmlx-serve, mlx_lm.server, LM Studio, or remote APIs.',
+      text: 'Supports local and remote compatible services, including Ollama and LM Studio.',
       cls: 'setting-item-description',
     });
 
     new Setting(el)
       .setName('Backend preset')
-      .setDesc('Pre-fill the API URL and suggested local command for a common backend.')
+      .setDesc('Fill in the server address and a suggested local command for a common backend.')
       .addDropdown((dropdown) => {
-        dropdown.addOption('', 'Pick a preset…');
-        Object.keys(LLM_PRESETS).forEach((key) => dropdown.addOption(key, key));
+        dropdown.addOption('', 'Choose a preset…');
+        Object.keys(LLM_PRESETS).forEach((key) => {
+          dropdown.addOption(key, key);
+        });
         dropdown.onChange((value) => {
           if (!value) {
             return;
@@ -175,8 +177,8 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       });
 
     new Setting(el)
-      .setName('LLM server URL')
-      .setDesc('Base URL of the OpenAI-compatible API.')
+      .setName('Language model server address')
+      .setDesc('Base web address for the compatible chat service.')
       .addText((text) =>
         text
           .setPlaceholder('http://127.0.0.1:11434')
@@ -196,10 +198,10 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('Model name')
-      .setDesc('Model ID sent in the API request, for example llama3 or gpt-4o.')
+      .setDesc('Model name sent in each request.')
       .addText((text) =>
         text
-          .setPlaceholder('llama3')
+          .setPlaceholder('Enter a model name')
           .setValue(this.plugin.settings.llmModel)
           .onChange((value) => {
             this.plugin.settings.llmModel = value;
@@ -208,7 +210,7 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       );
 
     new Setting(el)
-      .setName('API key')
+      .setName('Access token')
       .setDesc('Bearer token. Leave empty for local servers.')
       .addText((text) => {
         text
@@ -222,7 +224,7 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       });
 
     new Setting(el)
-      .setName('Auto-start LLM server')
+      .setName('Auto-start language model server')
       .setDesc('Automatically run the configured start command when the plugin loads.')
       .addToggle((toggle) =>
         toggle
@@ -234,11 +236,11 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       );
 
     new Setting(el)
-      .setName('LLM server start command')
-      .setDesc('Shell command to start your local LLM server.')
+      .setName('Language model server start command')
+      .setDesc('Shell command to start your local language model server.')
       .addText((text) =>
         text
-          .setPlaceholder('ollama serve')
+          .setPlaceholder('Enter a shell command')
           .setValue(this.plugin.settings.llmStartCommand)
           .onChange((value) => {
             this.plugin.settings.llmStartCommand = value;
@@ -254,7 +256,7 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
 
     new Setting(el)
       .setName('System prompt')
-      .setDesc('The system prompt sent to the LLM. It must instruct the model to return JSON with the expected fields.')
+      .setDesc('The system prompt sent to the model. It must instruct the model to return structured data with the expected fields.')
       .addTextArea((textarea) => {
         textarea
           .setValue(this.plugin.settings.systemPrompt)
@@ -276,11 +278,11 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       );
 
     new Setting(el)
-      .setName('Speaker / context hint')
+      .setName('Speaker and context hint')
       .setDesc('Injected into every request as extra context for recurring meetings or known participants.')
       .addText((text) =>
         text
-          .setPlaceholder('e.g. Alice (PM), Bob (engineering lead)')
+          .setPlaceholder('Add names or roles')
           .setValue(this.plugin.settings.speakerHint)
           .onChange((value) => {
             this.plugin.settings.speakerHint = value;
@@ -337,13 +339,13 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       );
 
     new Setting(el)
-      .setName('Start LLM server')
-      .setDesc('Run the configured LLM start command now.')
+      .setName('Start language model server')
+      .setDesc('Run the configured language model start command now.')
       .addButton((button) =>
         button
-          .setButtonText('Start LLM server')
+          .setButtonText('Start language model server')
           .onClick(() => {
-            void this.startManagedServer(button, () => this.plugin.llmManager.startIfNeeded(), 'Start LLM server');
+            void this.startManagedServer(button, () => this.plugin.llmManager.startIfNeeded(), 'Start language model server');
           }),
       );
 
@@ -393,14 +395,18 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
   private async testServer(button: ButtonComponent, ping: () => Promise<boolean>): Promise<void> {
     const ok = await ping();
     button.setButtonText(ok ? 'Ready' : 'Offline');
-    window.setTimeout(() => button.setButtonText('Test'), 3000);
+    window.setTimeout(() => {
+      button.setButtonText('Test');
+    }, 3000);
   }
 
   private testFfmpeg(button: ButtonComponent): void {
     const ffmpegPath = this.resolveFfmpegForTest();
     if (!ffmpegPath) {
       button.setButtonText('Not found');
-      window.setTimeout(() => button.setButtonText('Test FFmpeg'), 3000);
+      window.setTimeout(() => {
+        button.setButtonText('Test ffmpeg');
+      }, 3000);
       return;
     }
 
@@ -413,7 +419,9 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       button.setButtonText('Error');
     }
 
-    window.setTimeout(() => button.setButtonText('Test FFmpeg'), 4000);
+    window.setTimeout(() => {
+      button.setButtonText('Test ffmpeg');
+    }, 4000);
   }
 
   private async startManagedServer(
@@ -429,7 +437,9 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       button.setButtonText(ok ? 'Ready' : 'Failed');
     } finally {
       button.setDisabled(false);
-      window.setTimeout(() => button.setButtonText(resetLabel), 4000);
+      window.setTimeout(() => {
+        button.setButtonText(resetLabel);
+      }, 4000);
     }
   }
 
@@ -440,7 +450,9 @@ export class LocalMeetingTranscriberSettingTab extends PluginSettingTab {
       this.plugin.llmManager.ping(),
     ]);
     button.setButtonText(`Whisper: ${whisperOk ? 'ready' : 'offline'} | LLM: ${llmOk ? 'ready' : 'offline'}`);
-    window.setTimeout(() => button.setButtonText('Check status'), 5000);
+    window.setTimeout(() => {
+      button.setButtonText('Check status');
+    }, 5000);
   }
 
   private async resetAllSettings(): Promise<void> {
