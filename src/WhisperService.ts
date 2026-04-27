@@ -12,6 +12,12 @@ export class WhisperService {
   // ── Health check (for whisper-server mode) ─────────────────────────────────
 
   async ping(): Promise<boolean> {
+    // CLI mode: no whisper-server is needed — transcription runs whisper-cli directly.
+    // Treat as ready as long as the binary and model are resolvable.
+    if (!this.settings.whisperServerUrl.trim()) {
+      return this.resolveWhisperCli() !== null
+        && fs.existsSync(resolveTilde(this.settings.whisperModelPath));
+    }
     try {
       const res = await raceRequest(
         requestUrl({
